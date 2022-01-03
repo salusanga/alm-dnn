@@ -1,0 +1,5 @@
+{   
+    "training_type": "cb_BCE",
+    "beta": 0.99
+
+}

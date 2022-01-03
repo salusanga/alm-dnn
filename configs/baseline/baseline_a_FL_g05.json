@@ -1,0 +1,4 @@
+{   
+    "gamma": 0.5,
+    "training_type": "ASYM_FL"
+}
