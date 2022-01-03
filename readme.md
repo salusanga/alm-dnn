@@ -40,8 +40,8 @@ These are the most important arguments to set for the experiments.
 ___
 Parameter | Explaination |
 --- | --- |
-name_file_bs | config file to set the objective function (loss function) and its required hyperparameters, chosen from [configs/baseline/](https://gitlab.ethz.ch/sansara/alm-dnn/-/tree/master/configs/baseline/) |
-name_file_alm | config file to set the ALM parameters (mu, rho), chosen from [configs/ALM/](https://gitlab.ethz.ch/sansara/alm-dnn/-/tree/master/configs/ALM/) |
+name_file_bs | config file to set the objective function (loss function) and its required hyperparameters, chosen from [configs/baseline/](https://github.com/salusanga/alm-dnn/tree/main/configs/baseline) |
+name_file_alm | config file to set the ALM parameters (mu, rho), chosen from [configs/ALM/](https://github.com/salusanga/alm-dnn/tree/main/configs/ALM) |
 delta | value of delta for ALM (or set to 0 if not used) |
 model_name | name of the model to be trained from scratch or resumed |
 ratio_pos_train | ratio between classes 1:x, for binary case|
@@ -51,7 +51,7 @@ ___
 
 ## Training from scratch and evaluate
 
-Run the file [main.py](https://gitlab.ethz.ch/sansara/alm-dnn/-/blob/master/main.py)  to train and test a desired model, with a specific configuration of the parameters specified in the previous section. For example, in order to train from scratch a ResNet (whose base parameters are set, as in the paper), with BCE + ALM with a certain (mu, rho), on CIFAR10 with an injected ratio of 1:200:
+Run the file [main.py](https://github.com/salusanga/alm-dnn/blob/main/main.py)  to train and test a desired model, with a specific configuration of the parameters specified in the previous section. For example, in order to train from scratch a ResNet (whose base parameters are set, as in the paper), with BCE + ALM with a certain (mu, rho), on CIFAR10 with an injected ratio of 1:200:
 
 ```train
 python main.py --name_file_bs baseline_bce --name_file_alm ALM_14_beg --model_name alm_14  --ratio_pos_train 200 --dataset_name cifar10 --train 1
