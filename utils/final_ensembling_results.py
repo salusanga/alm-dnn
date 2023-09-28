@@ -28,7 +28,7 @@ def final_ensembling_results(
     max_validation_auc_runs,
 ):
     """
-    Function to calculate final results and print them
+    Function to calculate and print final results
     """
     print(
         "Validation AUC average: {}, standard deviation: {}".format(

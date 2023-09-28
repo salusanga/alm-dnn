@@ -8,7 +8,6 @@ from sklearn.metrics import roc_curve, auc
 import torch
 import torch.optim as optim
 import torch.nn as nn
-from .plot_statistics_functions import plot_roc
 from .custom_losses import select_objective_function, ALM_terms
 
 
@@ -48,7 +47,48 @@ def train(
     device,
 ):
     """
-    Function used to train on CIFAR datasets
+    Train a neural network model on CIFAR datasets with various optimization settings.
+
+    This function trains a neural network model on CIFAR datasets with options for different
+    training strategies and optimization techniques.
+
+    Parameters:
+        net (nn.Module): The neural network model to be trained.
+        num_epochs (int): The total number of training epochs.
+        subfolder_name (str): Subfolder name for storing checkpoints and logs.
+        model_name (str): Name of the model.
+        model_dir (str): Directory where model checkpoints and logs will be saved.
+        seed (int): Random seed for reproducibility.
+        per_class_samples (int): Number of samples per class.
+        bsize (int): Batch size for training.
+        lr (float): Learning rate for the optimizer.
+        lr_decrease (int): Whether to decrease learning rate on a plateau (0 or 1).
+        patience_lr (int): Patience for learning rate scheduler.
+        patience_early_stopping (int): Patience for early stopping.
+        num_maj (int): Number of majority class samples.
+        ratio_pos_train (float): Ratio of positive class samples in the training set.
+        training_type (str): Type of training loss function (e.g., 'LDAM', 'MBAUC').
+        gamma (float): Gamma parameter for the objective function.
+        m (float): Margin parameter for the objective function.
+        c (float): Constant for the objective function.
+        beta (float): Beta parameter for the objective function.
+        continue_train (int): Whether to continue training from a checkpoint (0 or 1).
+        continue_train_epochs (int): Number of additional epochs for continued training.
+        cont_tr_bs_name (str): Name of the baseline to continue the triaing from.
+        use_ALM (int): Whether to use Augmented Lagrangian Method (ALM) for optimization (0 or 1).
+        introd_ALM_from (int): Epoch from which to introduce ALM.
+        p2_norm (float): Power parameter for the ALM penalty term.
+        trainset (torch.utils.data.Dataset): Training dataset.
+        val_loader (torch.utils.data.DataLoader): DataLoader for the validation dataset.
+        rho (float): Rho parameter for updating the ALM multiplier.
+        mu (float): Initial value of the ALM quadratic penalty term.
+        mu_limit (float): Upper limit for the ALM multiplier.
+        cap_mu (int): Whether to cap the ALM multiplier (0 or 1).
+        delta (float): Delta parameter for ALM.
+
+    Returns:
+        float: Maximum validation AUC achieved during training.
+        list: Logits of the validation set for the checkpointed model.
     """
     # Set objective function
     loss_function = select_objective_function(
@@ -435,7 +475,21 @@ def train(
 
 def test(net, test_loader, model_dir, model_name, training_type, device):
     """
-    Test function with CIFAR datasets
+    Evaluate the performance of a trained neural network model on a test dataset.
+
+    This function evaluates a trained neural network model on a test dataset, calculates
+    the area under the ROC curve (AUC).
+
+    Parameters:
+        net (nn.Module): The trained neural network model to be evaluated.
+        test_loader (torch.utils.data.DataLoader): DataLoader for the test dataset.
+        model_dir (str): Directory where the trained model checkpoint is located.
+        model_name (str): Name of the trained model to retrieve the checkpoint file.
+        training_type (str): Type of loss (e.g., 'LDAM', 'MBAUC') used during training.
+        device (str): Device (CPU or GPU) on which to perform the evaluation.
+
+    Returns:
+        float: Area under the receiver operating characteristic (ROC) curve (AUC) for the test dataset.
     """
     print("Starting test.")
     checkpoint = torch.load(os.path.join(model_dir, model_name + ".pth"))
@@ -481,7 +535,6 @@ def test(net, test_loader, model_dir, model_name, training_type, device):
             comments="",
         )
 
-        plot_roc(model_dir, model_name, file_logits_gt)
         fpr, tpr, _ = roc_curve(test_gt_labels, test_logits, pos_label=1)
         roc_auc = auc(fpr, tpr)
 

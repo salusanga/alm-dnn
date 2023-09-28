@@ -8,6 +8,64 @@ import numpy as np
 import warnings
 
 
+def ALM_terms(
+    use_ALM,
+    constraint_type,
+    buffer_batch_pos,
+    buffer_batch_neg,
+    lambdas_index_buffer,
+    delta,
+    mu,
+    lambdas,
+    train_penalty,
+    loss,
+    p2_norm,
+    device,
+):
+    """
+    Calculate Augmented Lagrangian Method (ALM) terms for loss function.
+
+    Parameters:
+        use_ALM (int): Flag to indicate whether to use ALM terms (1 for yes, 0 for no).
+        constraint_type (str): Type of constraint for ALM (e.g., 'L2').
+        buffer_batch_pos (list): List of positive samples.
+        buffer_batch_neg (list): List of negative samples.
+        lambdas_index_buffer (list): List of lambda index values.
+        delta (float): Delta parameter for constraint.
+        mu (float): Penalty parameter for ALM.
+        lambdas (list): List of lambda values.
+        train_penalty (float): Penalty term for training.
+        loss (torch.Tensor): Current loss value.
+        p2_norm (int): Exponent for the L2 norm in the constraint.
+        device (torch.device): Device to perform computations (e.g., 'cuda' or 'cpu').
+
+    Returns:
+        tuple: A tuple containing:
+            - Updated lambdas (list).
+            - Train penalty value (float).
+            - Updated loss (torch.Tensor).
+    """
+    relu_function = nn.ReLU()
+    for pos_sample, single_lambda_index in zip(buffer_batch_pos, lambdas_index_buffer):
+        q_pos = torch.zeros([1, 1]).to(device)
+        for neg_sample in buffer_batch_neg:
+            q_pos += relu_function(-(pos_sample - neg_sample) + delta)
+        if use_ALM == 1:
+            loss = (
+                mu / 2 * torch.pow(q_pos, 2 * p2_norm)
+                + lambdas[int(single_lambda_index)] * q_pos
+            ) / (len(buffer_batch_pos) * len(buffer_batch_neg))
+            # Backward and update the loss with ALM terms
+            loss.backward(retain_graph=True)
+            # Update Lambda
+            lambdas[int(single_lambda_index)] += mu * q_pos
+        # Calculate train penalty, to be analyzed also for training set
+        train_penalty += torch.pow(q_pos, 2 * p2_norm).detach().cpu().numpy() / (
+            len(buffer_batch_pos) * len(buffer_batch_neg)
+        )
+    return lambdas, train_penalty, loss
+
+
 class SymBCEFocalLoss(nn.Module):
     """
     Symmetric BCE focal loss
@@ -142,9 +200,9 @@ class ClassBalancedBCE(nn.Module):
     def class_balanced_loss(self, x, t):  # x = NN output, t = 0/1 label
         BCE = torch.nn.BCEWithLogitsLoss(reduction="none")
         weight_tensor = torch.zeros_like(t, dtype=float)
-        weight_tensor[(t).nonzero()] = (1 - self.beta) / (1 - self.beta ** self.n_1)
+        weight_tensor[(t).nonzero()] = (1 - self.beta) / (1 - self.beta**self.n_1)
         weight_tensor[(t == 0).nonzero()] = (1 - self.beta) / (
-            1 - self.beta ** self.n_0
+            1 - self.beta**self.n_0
         )
         # print(x, weight_tensor, x*weight_tensor)
         cb_BCE = torch.mean(weight_tensor * BCE(x, t))
@@ -214,44 +272,6 @@ class LDAMLoss(nn.Module):
 
         output = torch.where(index, x_m, x)
         return F.cross_entropy(self.s * output, target.long(), weight=self.weight)
-
-
-def ALM_terms(
-    use_ALM,
-    constraint_type,
-    buffer_batch_pos,
-    buffer_batch_neg,
-    lambdas_index_buffer,
-    delta,
-    mu,
-    lambdas,
-    train_penalty,
-    loss,
-    p2_norm,
-    device,
-):
-    """
-    Select the type of constraint and calculate the ALM terms
-    """
-    relu_function = nn.ReLU()
-    for pos_sample, single_lambda_index in zip(buffer_batch_pos, lambdas_index_buffer):
-        q_pos = torch.zeros([1, 1]).to(device)
-        for neg_sample in buffer_batch_neg:
-            q_pos += relu_function(-(pos_sample - neg_sample) + delta)
-        if use_ALM == 1:
-            loss = (
-                mu / 2 * torch.pow(q_pos, 2 * p2_norm)
-                + lambdas[int(single_lambda_index)] * q_pos
-            ) / (len(buffer_batch_pos) * len(buffer_batch_neg))
-            # Backward and update the loss with ALM terms
-            loss.backward(retain_graph=True)
-            # Update Lambda
-            lambdas[int(single_lambda_index)] += mu * q_pos
-        # Calculate train penalty, to be analyzed also for training set
-        train_penalty += torch.pow(q_pos, 2 * p2_norm).detach().cpu().numpy() / (
-            len(buffer_batch_pos) * len(buffer_batch_neg)
-        )
-    return lambdas, train_penalty, loss
 
 
 def select_objective_function(

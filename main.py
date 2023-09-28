@@ -10,7 +10,6 @@ import torch
 from torchvision import transforms
 from models.resnet import ResNet10
 from utils.train_test_CIFAR import train, test
-from utils.CIFAR10_dataset import BinaryUnbalancedCIFAR10, BinaryBalancedCIFAR10
 from utils.CIFAR100_dataset import BinaryUnbalancedCIFAR100, BinaryBalancedCIFAR100
 from utils.final_ensembling_results import (
     final_ensembling_results,
@@ -138,40 +137,15 @@ transform_val_test = transforms.Compose(
         transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
     ]
 )
-if args["dataset_name"] == "cifar10":
-    new_majority_labels = [1]  # cars - to reproduce the paper
-    new_minority_labels = [9]  # trucks - to reproduce the paper
-
-    val_dataset = BinaryBalancedCIFAR10(
-        root=path_to_dataset,
-        tot_classes=2,
-        new_majority_labels=new_majority_labels,
-        new_minority_labels=new_minority_labels,
-        val_samples_per_cls=100,
-        train=True,
-        download=False,
-        transform=transform_val_test,
-    )
-    test_dataset = BinaryBalancedCIFAR10(
-        root=path_to_dataset,
-        tot_classes=2,
-        new_majority_labels=new_majority_labels,
-        new_minority_labels=new_minority_labels,
-        val_samples_per_cls=1000,
-        train=False,
-        download=False,
-        transform=transform_val_test,
-    )
-elif args["dataset_name"] == "cifar100":
+if args["dataset_name"] == "cifar100":
     new_majority_labels = np.array(
         [72, 4, 95, 30, 55]
     )  # Superclass fishes - to reproduce the paper
     new_minority_labels = np.array([73])  # Subclass sharks - to reproduce the paper
     val_dataset = BinaryBalancedCIFAR100(
         root=path_to_dataset,
-        tot_classes=2,
-        new_majority_labels=new_majority_labels,
-        new_minority_labels=new_minority_labels,
+        first_class_labels=new_majority_labels,
+        second_class_labels=new_minority_labels,
         val_samples_per_cls=50,
         train=True,
         download=False,
@@ -179,9 +153,8 @@ elif args["dataset_name"] == "cifar100":
     )
     test_dataset = BinaryBalancedCIFAR100(
         root=path_to_dataset,
-        tot_classes=2,
-        new_majority_labels=new_majority_labels,
-        new_minority_labels=new_minority_labels,
+        first_class_labels=new_majority_labels,
+        second_class_labels=new_minority_labels,
         val_samples_per_cls=100,
         train=False,
         download=False,
@@ -258,27 +231,11 @@ for seed in seeds:
         "checkpoint/", args["subfolder_name"], MODEL_NAME, SEED_STR
     )
 
-    if args["dataset_name"] == "cifar10":
-        train_dataset = BinaryUnbalancedCIFAR10(
-            root=path_to_dataset,
-            imb_factor=1 / args["ratio_pos_train"],
-            seed=seed,
-            tot_classes=num_classes,
-            new_majority_labels=new_majority_labels,
-            new_minority_labels=new_minority_labels,
-            val_samples_per_cls=100,
-            perc_per_run=0.9,
-            train=True,
-            download=False,
-            transform=transform_train,
-        )
-        lr = 0.01
-    elif args["dataset_name"] == "cifar100":
+    if args["dataset_name"] == "cifar100":
         train_dataset = BinaryUnbalancedCIFAR100(
             root=path_to_dataset,
             imb_factor=1 / args["ratio_pos_train"],
             seed=seed,
-            tot_classes=num_classes,
             new_majority_labels=new_majority_labels,
             new_minority_labels=new_minority_labels,
             val_samples_per_cls=50,
