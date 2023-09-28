@@ -1,5 +1,5 @@
 """
-Class defnition for training loss functions
+Defnition for all the training loss functions.
 """
 import torch
 import torch.nn as nn
@@ -23,7 +23,7 @@ def ALM_terms(
     device,
 ):
     """
-    Calculate Augmented Lagrangian Method (ALM) terms for loss function.
+    Calculate Augmented Lagrangian Method (ALM) terms for the proposed constraint.
 
     Parameters:
         use_ALM (int): Flag to indicate whether to use ALM terms (1 for yes, 0 for no).
