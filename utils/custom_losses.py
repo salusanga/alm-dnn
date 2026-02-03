@@ -7,63 +7,54 @@ import torch.nn.functional as F
 import numpy as np
 import warnings
 
-
-def ALM_terms(
-    use_ALM,
-    constraint_type,
-    buffer_batch_pos,
-    buffer_batch_neg,
-    lambdas_index_buffer,
-    delta,
-    mu,
-    lambdas,
-    train_penalty,
-    loss,
-    p2_norm,
-    device,
-):
+class ALMTermsClass(nn.Module):
     """
-    Calculate Augmented Lagrangian Method (ALM) terms for loss function.
-
-    Parameters:
-        use_ALM (int): Flag to indicate whether to use ALM terms (1 for yes, 0 for no).
-        constraint_type (str): Type of constraint for ALM (e.g., 'L2').
-        buffer_batch_pos (list): List of positive samples.
-        buffer_batch_neg (list): List of negative samples.
-        lambdas_index_buffer (list): List of lambda index values.
-        delta (float): Delta parameter for constraint.
-        mu (float): Penalty parameter for ALM.
-        lambdas (list): List of lambda values.
-        train_penalty (float): Penalty term for training.
-        loss (torch.Tensor): Current loss value.
-        p2_norm (int): Exponent for the L2 norm in the constraint.
-        device (torch.device): Device to perform computations (e.g., 'cuda' or 'cpu').
-
-    Returns:
-        tuple: A tuple containing:
-            - Updated lambdas (list).
-            - Train penalty value (float).
-            - Updated loss (torch.Tensor).
+    Class to calculate Augmented Lagrangian Method (ALM) terms for loss function.
     """
-    relu_function = nn.ReLU()
-    for pos_sample, single_lambda_index in zip(buffer_batch_pos, lambdas_index_buffer):
-        q_pos = torch.zeros([1, 1]).to(device)
-        for neg_sample in buffer_batch_neg:
-            q_pos += relu_function(-(pos_sample - neg_sample) + delta)
-        if use_ALM == 1:
+    def __init__(self,delta, p2_norm, device):
+        super(ALMTermsClass, self).__init__()
+        """
+            delta (float): Delta parameter for constraint.
+            mu (float): Penalty parameter for ALM.
+            p2_norm (int): Exponent for the L2 norm in the constraint."""
+        
+        self.delta = delta
+        self.p2_norm = p2_norm
+        self.device = device
+    def forward(
+        self,
+        buffer_batch_pos,
+        buffer_batch_neg,
+        lambdas_index_buffer,
+        lambdas,
+        mu
+        ):
+        """
+        Calculate Augmented Lagrangian Method (ALM) terms for loss function.
+
+        Parameters:
+            buffer_batch_pos (list): List of positive samples.
+            buffer_batch_neg (list): List of negative samples.
+            lambdas_index_buffer (list): List of lambda index values.
+            lambdas (list): List of lambda values.
+            device (torch.device): Device to perform computations (e.g., 'cuda' or 'cpu').
+
+        Returns:
+            tuple: A tuple containing:
+                - Updated lambdas (list).
+                - Loss (torch.Tensor)."""
+        relu_function = nn.ReLU()
+        for pos_sample, single_lambda_index in zip(buffer_batch_pos, lambdas_index_buffer):
+            q_pos = torch.zeros([1, 1]).to(self.device)
+            for neg_sample in buffer_batch_neg:
+                q_pos += relu_function(-(pos_sample - neg_sample) + self.delta)
             loss = (
-                mu / 2 * torch.pow(q_pos, 2 * p2_norm)
+                mu / 2 * torch.pow(q_pos, 2 * self.p2_norm)
                 + lambdas[int(single_lambda_index)] * q_pos
             ) / (len(buffer_batch_pos) * len(buffer_batch_neg))
-            # Backward and update the loss with ALM terms
-            loss.backward(retain_graph=True)
             # Update Lambda
             lambdas[int(single_lambda_index)] += mu * q_pos
-        # Calculate train penalty, to be analyzed also for training set
-        train_penalty += torch.pow(q_pos, 2 * p2_norm).detach().cpu().numpy() / (
-            len(buffer_batch_pos) * len(buffer_batch_neg)
-        )
-    return lambdas, train_penalty, loss
+        return lambdas, loss
 
 
 class SymBCEFocalLoss(nn.Module):
@@ -255,18 +246,18 @@ class LDAMLoss(nn.Module):
         super(LDAMLoss, self).__init__()
         m_list = 1.0 / np.sqrt(np.sqrt(cls_num_list))
         m_list = m_list * (max_m / np.max(m_list))
-        m_list = torch.cuda.FloatTensor(m_list)
-        self.m_list = m_list
+        # store as buffer so it moves with the module/device
+        self.register_buffer("m_list", torch.tensor(m_list, dtype=torch.float))
         assert s > 0
         self.s = s
         self.weight = weight
 
     def forward(self, x, target):
-        index = torch.zeros_like(x, dtype=torch.uint8)
-        index.scatter_(1, target.data.view(-1, 1).long(), 1)
+        index = torch.zeros_like(x, dtype=torch.bool)
+        index.scatter_(1, target.data.view(-1, 1).long(), True)
 
-        index_float = index.type(torch.cuda.FloatTensor)
-        batch_m = torch.matmul(self.m_list[None, :], index_float.transpose(0, 1))
+        index_float = index.float().to(x.device)
+        batch_m = torch.matmul(self.m_list[None, :].to(x.device), index_float.transpose(0, 1))
         batch_m = batch_m.view((-1, 1))
         x_m = x - batch_m
 

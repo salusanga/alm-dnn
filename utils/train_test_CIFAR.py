@@ -1,4 +1,5 @@
-""" Functions to train/test models on CIFAR datasets """
+"""Functions to train/test models on CIFAR datasets"""
+
 import os
 import csv
 import random
@@ -8,7 +9,7 @@ from sklearn.metrics import roc_curve, auc
 import torch
 import torch.optim as optim
 import torch.nn as nn
-from .custom_losses import select_objective_function, ALM_terms
+from .custom_losses import select_objective_function, ALMTermsClass
 
 
 def train(
@@ -102,6 +103,9 @@ def train(
         delta,
         per_class_samples,
     )
+    # Setup ALM class if needed
+    if use_ALM == 1:
+        ALM_terms_module = ALMTermsClass(delta, p2_norm, device)
 
     # Init variables useful to implement ALM
     lambdas = np.zeros(len(trainset))
@@ -171,7 +175,6 @@ def train(
         net.train()
 
         avg_loss_train = 0
-        train_penalty = 0
         train_logits = []
         train_gt_labels = []
         for batch_idx, train_data in enumerate(train_loader, 0):
@@ -197,35 +200,22 @@ def train(
             )
             loss = loss_function(train_out, target.float())
 
-            # MBAUC is based on the pair-wise comparison. To carry out the backward
-            # correctly it needs at least a pair to be present, so we need to
-            # exclude the case where no pairs are present
-            if (training_type != "MBAUC") or (
-                (training_type == "MBAUC")
-                and (len(buffer_batch_pos) != 0 and len(buffer_batch_neg) != 0)
-            ):
-                loss.backward(retain_graph=True)
-                avg_loss_train = avg_loss_train + loss.item()
-
             # If ALM is selected, calculate penalty and multipliers' terms
             if len(buffer_batch_pos) != 0 and len(buffer_batch_neg) != 0:
                 if training_type == "LDAM":
                     buffer_batch_pos = buffer_batch_pos[:, :, 1]
                     buffer_batch_neg = buffer_batch_neg[:, :, 1]
-
-                lambdas, train_penalty, loss = ALM_terms(
-                    use_ALM,
+            if use_ALM ==1:
+                lambdas, loss_ALM_terms = ALM_terms_module(
                     buffer_batch_pos,
                     buffer_batch_neg,
                     lambdas_index_buffer,
-                    delta,
-                    mu,
                     lambdas,
-                    train_penalty,
-                    loss,
-                    p2_norm,
-                    device,
+                    mu,
                 )
+                loss_total = loss + loss_ALM_terms
+            loss_total.backward()
+            avg_loss_train = avg_loss_train + loss_total.item()
 
             # Re-initialize for next training batch
             buffer_batch_pos = []
@@ -288,7 +278,7 @@ def train(
                     )
 
                 val_gt_labels.append(
-                    np.squeeze(val_target.detach().cpu().numpy().astype(np.bool))
+                    np.squeeze(val_target.detach().cpu().numpy().astype(bool))
                 )
                 val_logits.append(np.squeeze(val_out.detach().cpu().numpy()))
 
@@ -442,17 +432,15 @@ def train(
                 )
             )
             # Plot validation loss and AUC and store values
-            file = open(
+            with open(
                 os.path.join(model_dir, model_name + "_loss_AUC_values.csv"),
                 "w+",
                 newline="",
-            )
-            with file:
-                write = csv.writer(file)
-                write.writerow(["Val Loss", "Val AUC"])
-                write.writerows(zip(val_loss_list, val_auc_list))
-            file.close()
-            return max_val_auc, val_logits_ckp_model
+            ) as f:
+                writer = csv.writer(f)
+                writer.writerow(["Val Loss", "Val AUC"])
+                writer.writerows(zip(val_loss_list, val_auc_list))
+                return max_val_auc, val_logits_ckp_model
 
     print(
         "Maximum validation AUC value {} at epoch {}.".format(
@@ -460,16 +448,14 @@ def train(
         )
     )
     # Plot validation loss and AUC and store values when training is complete
-    file = open(
+    with open(
         os.path.join(model_dir, model_name + "_val_loss_AUC_values.csv"),
         "w+",
         newline="",
-    )
-    with file:
-        write = csv.writer(file)
-        write.writerow(["Val Loss", "Val AUC"])
-        write.writerows(zip(val_loss_list, val_auc_list))
-    file.close()
+    ) as f:
+        writer = csv.writer(f)
+        writer.writerow(["Val Loss", "Val AUC"])
+        writer.writerows(zip(val_loss_list, val_auc_list))
     return max_val_auc, val_logits_ckp_model
 
 
@@ -505,12 +491,10 @@ def test(net, test_loader, model_dir, model_name, training_type, device):
             data = data.to(device)
             test_out = net(data)
 
-            test_out_max = (test_out.detach().cpu().numpy() > 0.0).astype(np.float)
-            test_gt_labels.append(
-                np.squeeze(target.detach().cpu().numpy().astype(np.int))
-            )
+            test_out_max = (test_out.detach().cpu().numpy() > 0.0).astype(float)
+            test_gt_labels.append(np.squeeze(target.detach().cpu().numpy().astype(int)))
             test_logits.append(np.squeeze(test_out.detach().cpu().numpy()))
-            test_labels_predicted.append(np.squeeze(test_out_max.astype(np.int)))
+            test_labels_predicted.append(np.squeeze(test_out_max.astype(int)))
 
         file_labels_pred = os.path.join(
             model_dir, model_name + "_labels_pred_and_GT_fv.csv"
